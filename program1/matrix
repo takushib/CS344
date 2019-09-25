@@ -1,0 +1,416 @@
+#!/bin/bash
+#Program 1, CS344, Blaise Takushi (takushib@oregonstate.edu) 932-347-942
+lineNum=0
+columnCount=0
+
+#   Statements below check if the function called by user exists, if not, send an error code.
+if [[ "$1" != "dims" ]] && [[ "$1" != "mean" ]] && [[ "$1" != "transpose" ]] && [[ "$1" != "add" ]] && [[ "$1" != "multiply" ]]
+then
+  echo "Invalid Function Call" >&2
+  exit 1
+fi
+function readCheck1()
+{
+  # NAME
+  #   readCheck1
+  # SYNOPSIS
+  #   validate (for one or no parameters) that input is readable and valid.
+  # DESCRIPTION
+  #   Checks if the number of parameters is 0, if so, check if stdin is empty or not
+  #   Checks if number of parameters is 1, if so, check if that file is readable or if it exists
+  # AUTHOR
+  #   Written by Blaise Takushi (takushib@oregonstate.edu)
+    if [[ "$#" -eq 0 ]]
+    then
+      #if stdin is not empty, proceed
+      if [[ ! -t 0 ]]
+      then
+        return 0
+      else
+        echo "File does not exist or is not readable" >&2
+        exit 1
+      fi
+    else
+      #if the parameter is readable and exists, then proceed
+      [[ -r $1 ]] && [[ -e $1 ]]
+      if [[ "$?" -ne 0 ]]
+      then
+        echo "File does not exist or is not readable" >&2
+        exit 1
+      else
+        return 0
+      fi
+    fi
+}
+
+
+function readCheck2()
+{
+  # NAME
+  #   readCheck2
+  # SYNOPSIS
+  #   validate (for 2 parameters) that inputs are readable and valid.
+  # DESCRIPTION
+  #   Checks if the number of parameters is 2, if so, check if both files are readable
+  #   if not, gives error code for having too many parameters
+  # AUTHOR
+  #   Written by Blaise Takushi (takushib@oregonstate.edu)
+  if [[ "$#" -eq 2 ]]
+  then
+    [[ -e $1 ]] && [[ -e $2 ]]
+    if [[ "$?" -ne 0 ]]
+    then
+      echo "One or both of the files do not exist or are not readable" >&2
+      exit 3
+    else
+      return 0
+    fi
+  else
+    echo "Incorrect number of arguments" >&2
+    exit 4
+  fi
+}
+
+
+function dims()
+{
+  # NAME
+  #   dims
+  # SYNOPSIS
+  #   output dimensions (rows x columns) of given matrix
+  # DESCRIPTION
+  #   Checks if input is from stdin or normal parameter (validated by readcheck1)
+  #   Iterates through each row, counting the number of columns while keeping track of how many rows there are
+  #   Ouputs rows x columns to the terminal
+  # AUTHOR
+  #   Written by Blaise Takushi (takushib@oregonstate.edu)
+  if [[ $# -eq 0 ]]
+  then
+    #checking if input is valid.
+    readCheck1
+    cat > "tempfile$$"
+    lineNum=0
+    columnCount=0
+    #while reading the file, count the number of elements in each row and the number of total rows iterated through
+    while read myLine
+    do
+      trap "rm -f tempfile$$; echo 'SIGINT received: Deleting temp file then exiting!'; exit 1" INT HUP TERM
+      #reset number of elements because of the new line
+      columnCount=0
+      lineNum=$(expr $lineNum + 1)
+      for i in $myLine
+      do
+        num=$i
+        columnCount=$(expr $columnCount + 1)
+      done
+    done < "tempfile$$"
+    echo $lineNum $columnCount
+    rm -f "tempfile$$"
+    exit 0
+  elif [[ $# -gt 1 ]]
+  then
+    #too many arguments passed into function
+    echo "Too many arguments" >&2
+    exit 2
+  else
+    #parameter is passed normally
+    readCheck1 $1
+    lineNum=0
+    columnCount=0
+    while read myLine
+    do
+      #reset element count because of new line
+      columnCount=0
+      lineNum=$(expr $lineNum + 1)
+      for i in $myLine
+      do
+        num=$i
+        columnCount=$(expr $columnCount + 1)
+      done
+    done < $1
+    #output results to terminal
+    echo $lineNum $columnCount
+    exit 0
+  fi
+}
+
+
+function mean()
+{
+  # NAME
+  #   mean
+  # SYNOPSIS
+  #   Calculates the average of a given matrix and places it into a 1XN matrix
+  # DESCRIPTION
+  #   Checks if input is from stdin or normal parameter (validated by readcheck1)
+  #   if valid, iterate over the matrix, saving the sum from each row and dividing by the number of elements in the row.
+  #   Place each average value in the corresponding position in the 1XN matrix, and output that to the terminal when finished
+  # AUTHOR
+  #   Written by Blaise Takushi (takushib@oregonstate.edu)
+  if [[ $# -eq 0 ]]
+  then
+    readCheck1
+    cat > "tempfile$$"
+    dimensions=$(dims "tempfile$$")
+    columns=$(cut -f2 -d " " <<< $dimensions)
+    #transpose the passed in file
+    for i in $(seq $columns)
+    do
+      myvar=$(cut -f"$i" "tempfile$$" | tr '\n' '\t')
+      echo "${myvar%?}" >> "temprowfile$$"
+    done
+    while read myLine
+    do
+      sum=0
+      count=0
+      average=0
+      trap "rm -f temprowfile$$; echo 'SIGINT received: Deleting temp file then exiting!'; exit 1" INT HUP TERM
+      #sums each row
+      for i in $myLine
+      do
+        num=$i
+        count=$(expr $count + 1)
+        sum=$(expr $sum + $num)
+      done
+      #calculates average for the row
+      average=$((($sum + ($count/2) * ( ($sum>0)*2-1 )) / $count))
+      echo $average >> "tempAvgfile1$$"
+    done < "temprowfile$$"
+    final=$(cat "tempAvgfile1$$" | tr '\n' '\t')
+    #cut out final character of the file
+    echo "${final%?}"
+    rm -f "tempAvgfile1$$"
+    rm -f "temprowfile$$"
+    rm -f "tempfile$$"
+    exit 0
+  elif [[ $# -gt 1 ]]
+  then
+    echo "Too many arguments!" >&2
+    exit 2
+  else
+    #check if input is valid (for normally passed parameters)
+    readCheck1 $1
+    dimensions=$(dims $1)
+    columns=$(cut -f2 -d " " <<< $dimensions)
+    for i in $(seq $columns)
+    do
+      myvar=$(cut -f"$i" $1 | tr '\n' '\t')
+      echo "${myvar%?}" >> "temprowfile$$"
+    done
+    while read myLine
+    do
+      #reset variables because it is a new line
+      sum=0
+      count=0
+      average=0
+      trap "rm -f temprowfile$$; echo 'SIGINT received: Deleting temp file then exiting!'; exit 1" INT HUP TERM
+      for i in $myLine
+      do
+        num=$i
+        count=$(expr $count + 1)
+        sum=$(expr $sum + $num)
+      done
+      average=$((($sum + ($count/2) * ( ($sum>0)*2-1 )) / $count))
+      echo "${average}" >> "tempAvgfile1$$"
+    done < "temprowfile$$"
+    final=$(cat "tempAvgfile1$$" | tr '\n' '\t')
+    echo "${final%?}"
+    rm -f "tempAvgfile1$$"
+    rm -f "temprowfile$$"
+    exit 0
+  fi
+}
+
+function transpose()
+{
+  # NAME
+  #   transpose
+  # SYNOPSIS
+  #   Takes a MxN matrix and returns a NxM matrix
+  # DESCRIPTION
+  #   Checks if input is from stdin or normal parameter (validated by readcheck1)
+  #   if valid, cut each column from the matrix and place it as a row in a new file
+  #   When finished cutting each column, output the matrix to the terminal and delete the temp file
+  # AUTHOR
+  #   Written by Blaise Takushi (takushib@oregonstate.edu)
+  if [[ $# -eq 0 ]]
+  then
+    readCheck1
+    cat > "tempfile$$"
+    dimensions=$(dims "tempfile$$")
+    columns=$(cut -f2 -d " " <<< $dimensions)
+    #for each column in the matrix change the new lines to tabs so that the matrix is flipped
+    for i in $(seq $columns)
+    do
+      myvar=$(cut -f"$i" "tempfile$$" | tr '\n' '\t')
+      echo "${myvar%?}" >> "temprowfile$$"
+    done
+    final=$(cat "temprowfile$$")
+    echo "${final}"
+    rm -f "temprowfile$$"
+    rm -f "tempfile$$"
+    exit 0
+  elif [[ $# -gt 1 ]]
+  then
+    echo "Too many arguments!" >&2
+    exit 2
+  else
+    #check if input is valid
+    readCheck1 $1
+    dimensions=$(dims $1)
+    #extract columns out of dimensions
+    columns=$(cut -f2 -d " " <<< $dimensions)
+    #places the cut columns into a row file
+    for i in $(seq $columns)
+    do
+      myvar=$(cut -f"$i" $1 | tr '\n' '\t')
+      echo "${myvar%?}" >> "temprowfile$$"
+    done
+    final=$(cat "temprowfile$$")
+    echo "${final}"
+    rm -f "temprowfile$$"
+    exit 0
+  fi
+}
+
+
+function add()
+{
+  # NAME
+  #   add
+  # SYNOPSIS
+  #   Calculates the sum of two matrices of the same dimensions
+  # DESCRIPTION
+  #   Check if both parameters are valid (readcheck2), and check if dimensions match up (if not, give error)
+  #   if valid, iterate over the matrix, saving the sum from each row and dividing by the number of elements in the row.
+  #   Place each average value in the corresponding position in the 1XN matrix, and output that to the terminal when finished
+  # AUTHOR
+  #   Written by Blaise Takushi (takushib@oregonstate.edu)
+  readCheck2 $1 $2
+  #checks if dimensions match
+  if [[ $(dims $1) != $(dims $2) ]]
+  then
+    echo "Dimensions do not match" >&2
+    exit 5
+  else
+    dimensions=$(dims $1)
+    #extract rows and columns from dimensions output
+    rows=$(cut -f1 -d " " <<< $dimensions)
+    columns=$(cut -f2 -d " " <<< $dimensions)
+    while read myline1 <&3 && read myline2 <&4
+    do
+      #reset both arrays so that old values are not kept
+      array1[$columns]=0
+      array2[$columns]=0
+      index1=0
+      index2=0
+      #store line into an array for both matrices
+      for i in $myline1
+      do
+        num=$i
+        array1[index1]=$num
+        index1=$(expr $index1 + 1)
+      done
+      #store line of second array into an array
+      for i in $myline2
+      do
+        num=$i
+        array2[index2]=$num
+        index2=$(expr $index2 + 1)
+      done
+      #add the arrays element by element and store into a new file
+      for i in $(seq $columns)
+      do
+        #decrement index by one so that the element still exists
+        sum=0
+        index=$(expr $i - 1)
+        #add the two arrays at the given index
+        sum=$(expr ${array1[index]} + ${array2[index]})
+        echo -n $sum >> "tempsumfile$$"
+        echo -n  -e '\t' >> "tempsumfile$$"
+      done
+      printf '%s\n' '$' 's/.$//' wq | ex "tempsumfile$$"
+    done 3<$1 4<$2
+    #output new file and remove it
+    cat "tempsumfile$$"
+    rm -f "tempsumfile$$"
+    exit 0
+  fi
+}
+
+
+function multiply()
+{
+  # NAME
+  #   multiply
+  # SYNOPSIS
+  #   Calculates the product of two matrices (MxN and NxP) and outputs a MxP matrix
+  # DESCRIPTION
+  #   Check if both parameters are valid (readcheck2), and check if columns of first parameter and rows of second parameter match up
+  #   if valid, transpose second matrix, calculate the product of each row and then store it in a temp file.
+  # AUTHOR
+  #   Written by Blaise Takushi (takushib@oregonstate.edu)
+  #check if inputs are valid
+  readCheck2 $1 $2
+  dimensions1=$(dims $1)
+  rows1=$(cut -f1 -d " " <<< $dimensions1)
+  columns1=$(cut -f2 -d " " <<< $dimensions1)
+  dimensions2=$(dims $2)
+  rows2=$(cut -f1 -d " " <<< $dimensions2)
+  columns2=$(cut -f2 -d " " <<< $dimensions2)
+  #make sure appropriate dimensions match, if not output an error statement
+  if [[ $columns1 -ne $rows2 ]]
+  then
+    echo "Can't complete multiplication, invalid dimensions" >&2
+    exit 6
+  else
+    #transpose second matrix so they both have the same amount of columns
+    newMatrix2=$(transpose $2)
+    echo "${newMatrix2}" > "tempmatrix2$$"
+    #store lines into an array
+    while read myline1
+    do
+      array1[$columns1]=0
+      index1=0
+      #store the line of the first matrix in an array so it can be used for addition later
+      for i in $myline1
+      do
+        num=$i
+        array1[index1]=$num
+        index1=$(expr $index1 + 1)
+      done
+      #calculate multiplication when reading the lines of the second array (tranpsosed matrix)
+      while read myline2
+      do
+        array2[$columns1]=0
+        index2=0
+        total=0
+        #store second matrix line in an array to do calculations
+        for i in $myline2
+        do
+          num=$i
+          array2[index2]=$num
+          index2=$(expr $index2 + 1)
+        done
+        #iterate over each element in a single line peforming the multiplication and addition
+        for i in $(seq $columns1)
+        do
+          sum=0
+          index=$(expr $i - 1)
+          sum=$((${array1[index]} * ${array2[index]}))
+          total=$(expr $total + $sum)
+        done
+        #store the result in a temp file
+        echo -n $total >> "tempmultfile$$"
+        echo -n  -e '\t' >> "tempmultfile$$"
+      done < "tempmatrix2$$"
+      printf '%s\n' '$' 's/.$//' wq | ex "tempmultfile$$"
+    done < $1
+    #output result to terminal
+    cat "tempmultfile$$"
+    rm -f "tempmultfile$$"
+    rm -f "tempmatrix2$$"
+    exit 0
+  fi
+}
+$@
